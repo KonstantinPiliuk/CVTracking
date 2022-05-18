@@ -9,16 +9,26 @@ from Logger import insert_data
 
 class Detector():
 
-  def __init__(self, videofile, log=True):
+  def __init__(self, vid, weights, log=True, dialect='mysql', host=None, user=None, pwd=None, database=None):
+    self.vid = vid
+    self.weights = weights
+
+    self.log = log
+    self.dialect = dialect
+    self.host = host
+    self.user = user
+    self.database = database
+    self.pwd = pwd
+
     self.output = None
     self.frames = []
     self.homography = None
     self.objects = None
     self.keypoints = None
-    self.gt_coords = None
+    self.gt_coords = {'center':[105/2,30,1], 'center-up':[105/2,30+9.15,1], 'center-down':[105/2,30-9.15,1],
+    'center-left':[105/2-9.15,30,1], 'center-right':[105/2+9.15,30,1]}
     self.filter = None
     self.colors = []
-    self.log = log
 
     self._bad_homography_filter = None
     self._no_points_filter = None
@@ -28,23 +38,24 @@ class Detector():
     self._gray_frames = []
 
     #read video to frames
-    vid = cv2.VideoCapture(videofile)
+    video = cv2.VideoCapture(self.vid)
     while True:
-      _, img = vid.read()
+      _, img = video.read()
       if img is None:
-        print('Completed')
+        #print('Video read successfully')
         break
 
       self.frames.append(img[:,:,::-1])
       self._gray_frames.append(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
-      self._times.append(vid.get(cv2.CAP_PROP_POS_MSEC))
+      self._times.append(video.get(cv2.CAP_PROP_POS_MSEC))
 
-    vid.release()
+    video.release()
     cv2.destroyAllWindows()
 
     #add new game to game reference
     if self.log:
-      insert_data(pd.DataFrame([{'HOME_SIDE': 'Team 1', 'AWAY_SIDE': 'Team 2', 'GAME_DT': '2022-05-01'}]), 'games_ref')
+      game_df = pd.DataFrame([{'HOME_SIDE': 'Team 1', 'AWAY_SIDE': 'Team 2', 'GAME_DT': '2022-05-01'}])
+      insert_data(game_df,'games_ref', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
   def detect(self, model_type='yolov5l', limit_classes=True):
     if model_type not in ['yolov5n', 'yolov5s', 'yolov5m', 'yolov5l', 'yolov5x']:
@@ -63,13 +74,13 @@ class Detector():
     self.objects = model(self.frames)
     self._yolo_features = activation['conv_80'].cpu().numpy()
 
-  def find_keypoints(self, model_state_path):
+  def find_keypoints(self):
     if self._yolo_features is None:
       raise Exception("No YOLO features yet. Consider finding objects first")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = CoordsNet().to(device)
-    model.load_state_dict(torch.load(model_state_path, map_location=torch.device(device)))
+    model.load_state_dict(torch.load(self.weights, map_location=torch.device(device)))
     model.eval()
 
     out = []
@@ -96,14 +107,13 @@ class Detector():
     scale = (H@new.T)[-1].T
     return (new@H.T/scale[:,None])
 
-  def project(self, ground_truth: dict):
+  def project(self):
     #dict with true coordinates should preserve the order of points,
     #in which they are predicted
-    self.gt_coords = ground_truth
-    self._true_coord = np.array(list(ground_truth.values()))
+    self._true_coord = np.array(list(self.gt_coords.values()))
     self.homography = [self._get_homography(x, self._true_coord) for x in self.keypoints]
 
-    #meusure unsimilarity beetween homographies
+    #measure unsimilarity beetween homographies
     benchmark = np.median(np.array(self.homography), axis=0)
     h_dist = [norm(H-benchmark) for H in self.homography]
 
@@ -155,33 +165,33 @@ class Detector():
     #objects
     objs = [df for df in self.objects.pandas().xyxy]
     obj = pd.concat(objs, keys=[str(a) for a in range(len(objs))], names=['FRAME_ID', 'DETECTION_ID']).reset_index()
-    insert_data(obj, 'detected_objects')
+    insert_data(obj, 'detected_objects', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
     #keypoints
     kpts = [pd.DataFrame({'x_pos': x[:,0], 'y_pos': x[:,1]}) for x in self.keypoints]
     kpt = pd.concat(kpts, keys=[str(x) for x in range(len(kpts))], names=['FRAME_ID', 'KEYPOINT_ID']).reset_index()
-    insert_data(kpt, 'detected_keypoints')
+    insert_data(kpt, 'detected_keypoints', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
     #keypoints reference
     ref = pd.DataFrame([{'nm': k, 'x_pos': v[0], 'y_pos': v[1]} for k, v in self.gt_coords.items()]).reset_index()
-    insert_data(ref, 'keypoints_ref')
+    insert_data(ref, 'keypoints_ref', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
     #filters
     flt = pd.DataFrame({
       'bad_homography': self._bad_homography_filter, 'no_keypoints': self._no_points_filter, 'common_filter': self.filter
       }).reset_index()
-    insert_data(flt, 'homography_filters')
+    insert_data(flt, 'homography_filters', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
     #transformation
-    insert_data(self.output, 'fct_transform')
+    insert_data(self.output, 'fct_transform', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
-  def funnel(self, model_state_path, gt):
+  def funnel(self):
     #stage1 - detect objects
     self.detect()
     #stage2 - detect keypoints
-    self.find_keypoints(model_state_path=model_state_path)
+    self.find_keypoints()
     #stage3 - homography and filters
-    self.project(ground_truth=gt)
+    self.project()
     #stage3 - transormation
     self.transform()
     #stage4 - color

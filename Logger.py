@@ -1,13 +1,20 @@
-from pyrsistent import inc
 import sqlalchemy as sa
 import datetime
 import numpy as np
 
-def db_connect(dialect='mysql', host="192.168.99.102:3306", user="root", pwd="admin", database="prod_dm_tracking"):
+def db_connect(dialect='mysql', host=None, user=None, pwd=None, database=None):
+    if pwd is None:
+        raise Exception('Please provide password with --p argument')
+    if user is None:
+        raise Exception('Please provide username with --u argument')
+    if host is None:
+        raise Exception('Please provide hostname in XXX.XXX.XX.XXX:XXXX format with --h argument')
+    if database is None:
+        raise Exception('Please provide database name with --db argument')
     return sa.create_engine(f"{dialect}://{user}:{pwd}@{host}/{database}")
 
-def insert_data(df, table, increment=False):
-    db = db_connect()
+def insert_data(df, table, increment=False, dialect='mysql', host=None, user=None, pwd=None, database=None):
+    db = db_connect(dialect=dialect, host=host, user=user, pwd=pwd, database=database)
     data = df.copy()
 
     #check if tables are initialized and equally filled
@@ -15,12 +22,13 @@ def insert_data(df, table, increment=False):
         'games_ref', 'detected_objects', 'detected_keypoints', 'keypoints_ref',
         'homography_filters', 'fct_transform', 'matches_ref', 'fct_track']]):
 
-        scheme_init()
+        scheme_init(dialect=dialect, host=host, user=user, pwd=pwd, database=database)
 
     #last game_id
     last_game = db.execute('select max(game_id) from games_ref').fetchone()._mapping['max(game_id)']
     last_game = 0 if last_game is None else last_game
-    if not increment:
+    #initialize game for game_ref table
+    if table == 'games_ref' and not increment:
         last_game += 1
     #add constants - first and last fields
     data.insert(loc=data.shape[1], column='PROCESSED_DTTM', value = datetime.datetime.today())
@@ -31,11 +39,11 @@ def insert_data(df, table, increment=False):
     data.columns = col_names
 
     #write
-    data.to_sql(name=table, con=db, schema='prod_dm_tracking', if_exists='append', index=False)
-    return f'{data.shape[0]} rows are inserted to {table}'
+    data.to_sql(name=table, con=db, schema=database, if_exists='append', index=False)
+    print(f'{data.shape[0]} rows are inserted to {table}') 
 
-def scheme_init():
-    db = db_connect()
+def scheme_init(dialect='mysql', host=None, user=None, pwd=None, database=None):
+    db = db_connect(dialect=dialect, host=host, user=user, pwd=pwd, database=database)
 
     #DROP scheme tables and create new ones
     db.execute("DROP TABLE IF EXISTS games_ref")

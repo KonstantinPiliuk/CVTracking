@@ -19,12 +19,19 @@ def check_dicts_keys(dicts_lst: list):
 
 class Tracker():
 
-  def __init__(self):
+  def __init__(self, log=True, dialect='mysql', host=None, user=None, pwd=None, database=None):
     self.df = None
     self.states_hist = Extractor()
     self.matches_hist = []
     self.frames_hist = []
     self.__pos_hist = []
+
+    self.log = log
+    self.dialect = dialect
+    self.host = host
+    self.user = user
+    self.database = database
+    self.pwd = pwd
 
   @staticmethod
   def __check_df_input(df):
@@ -159,7 +166,7 @@ class Tracker():
        
   @staticmethod
   def __state_update(last_state, cur_state, matches):
-    frame_time_delta = (max([x['time'] for x in cur_state.values()]) - max([x['time'] for x in last_state.values()]))/1000
+    new_time = max([x['time'] for x in copy.deepcopy(cur_state).values()])
 
     for new_obj in matches.keys():
       last_obj = matches[new_obj]
@@ -188,8 +195,9 @@ class Tracker():
     #for unmatched objects increase time delta
     for unmatched_object in last_state.keys():
       if unmatched_object not in matches.values():
-        last_state[unmatched_object]['t_delta'] += frame_time_delta
-
+        last_state[unmatched_object]['t_delta'] += (new_time - last_state[unmatched_object]['time'])/1000
+        last_state[unmatched_object]['time'] = new_time  
+         
     return last_state
 
   def __ref(self, last_state, matches):
@@ -206,7 +214,7 @@ class Tracker():
     #matches
     mtch = pd.DataFrame([{'FRAME_ID': id, 'DETECTION_NUM': k, 'OBJECT_ID': v} for x,id in zip(
       self.matches_hist, self.frames_hist) for k,v in x.items()])
-    insert_data(mtch, 'matches_ref')
+    insert_data(mtch, 'matches_ref', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
     #result
     #position
@@ -267,9 +275,9 @@ class Tracker():
                   exp, how='left', on=['OBJECT_ID', 'FRAME_ID']).merge(
                       dlt, how='left', on=['OBJECT_ID', 'FRAME_ID']
                   )
-    insert_data(out, 'fct_track')
+    insert_data(out, 'fct_track', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
-  def fit(self, df, max_velocity=12, min_t_delta=0.03, max_t_delta=1.2, log=True):
+  def fit(self, df, max_velocity=12, min_t_delta=0.03, max_t_delta=1.2):
     self.df = self.__check_df_input(df)
     self.frames_hist = list(df['frame'].sort_values().unique())
 
@@ -297,5 +305,5 @@ class Tracker():
       self.__ref(last_state, matches)
 
     #log
-    if log:
+    if self.log:
       self._log()
