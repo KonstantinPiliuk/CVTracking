@@ -19,7 +19,7 @@ def check_dicts_keys(dicts_lst: list):
 
 class Tracker():
 
-  def __init__(self, log=True, dialect='mysql', host=None, user=None, pwd=None, database=None):
+  def __init__(self, log=None, dialect='mysql', host=None, user=None, pwd=None, database=None):
     self.df = None
     self.states_hist = Extractor()
     self.matches_hist = []
@@ -305,5 +305,7 @@ class Tracker():
       self.__ref(last_state, matches)
 
     #log
-    if self.log:
+    if self.log == 'sql':
       self._log()
+    elif isinstance(self.log, str):
+      pd.DataFrame(self.states_hist.extract('pos')).to_csv(self.log)

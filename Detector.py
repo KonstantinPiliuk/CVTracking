@@ -53,7 +53,7 @@ class Detector():
     cv2.destroyAllWindows()
 
     #add new game to game reference
-    if self.log:
+    if self.log == 'sql':
       game_df = pd.DataFrame([{'HOME_SIDE': 'Team 1', 'AWAY_SIDE': 'Team 2', 'GAME_DT': '2022-05-01'}])
       insert_data(game_df,'games_ref', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
@@ -198,5 +198,5 @@ class Detector():
     self.__color_extract()
     self.output['color'] = self.colors
     #stage5 - logging
-    if self.log:
+    if self.log == 'sql':
       self._log()

@@ -6,7 +6,7 @@ def init_args():
     parser = argparse.ArgumentParser(description='Arguments for tracking process')
     parser.add_argument("--vid", required=True, type=str, help="Video file for computation")
     parser.add_argument("--w", default='coords_model.pt', type=str, help="Model weights file for keypoints detection")
-    parser.add_argument("--log", default=False, type=bool, help="Log to SQL Database")
+    parser.add_argument("--log", default=None, type=str, help="Log to SQL Database or csv file")
     parser.add_argument("--d", default=None, type=str, help="SQL dialect")
     parser.add_argument("--h", default=None, type=str, help="Host adress for SQL")
     parser.add_argument("--db", default=None, type=str, help="Database name for SQL")
