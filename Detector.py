@@ -4,7 +4,7 @@ import cv2
 import torch
 from numpy.linalg import norm
 from itertools import compress
-from CoordsNet import CoordsNet
+from CoordsNet import padding_adjust, CoordsNet
 from Logger import insert_data
 
 class Detector():
@@ -79,15 +79,13 @@ class Detector():
       raise Exception("No YOLO features yet. Consider finding objects first")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = CoordsNet().to(device)
+    params = padding_adjust(n=13, x=self._yolo_features)
+    model = CoordsNet(params).to(device)
     model.load_state_dict(torch.load(self.weights, map_location=torch.device(device)))
     model.eval()
 
-    out = []
-    for feature in self._yolo_features:
-      inp = torch.from_numpy(feature).to(device)
-      out.append(model(inp).cpu().detach().numpy())
-    self.keypoints = np.array(out).reshape(len(self.frames), 5, 2)
+    inp = torch.from_numpy(self._yolo_features).to(device)
+    self.keypoints = model(inp)[-1].cpu().detach().numpy().reshape(len(self.frames), 5, 2)
 
   @staticmethod
   def _get_homography(x,y):
@@ -107,7 +105,7 @@ class Detector():
     scale = (H@new.T)[-1].T
     return (new@H.T/scale[:,None])
 
-  def project(self):
+  def project(self, threshold=0.02):
     #dict with true coordinates should preserve the order of points,
     #in which they are predicted
     self._true_coord = np.array(list(self.gt_coords.values()))
@@ -118,13 +116,14 @@ class Detector():
     h_dist = [norm(H-benchmark) for H in self.homography]
 
     #eleminate observations with deviations in keypoints detections
-    self._bad_homography_filter = [True if x<0.5 else False for x in h_dist]
+    self._bad_homography_filter = [True if x<threshold else False for x in h_dist]
 
     #eleminate observations with no keypoints detected
-    self._no_points_filter = [True if x.sum() != 5 else False for x in self.keypoints]
+    #self._no_points_filter = [True if x.sum() != 5 else False for x in self.keypoints]
 
     #common filter
-    self.filter = np.multiply(self._bad_homography_filter,self._no_points_filter).tolist()
+    #self.filter = np.multiply(self._bad_homography_filter,self._no_points_filter).tolist()
+    self.filter = self._bad_homography_filter
 
   def __color_extract(self, func=np.median):
     yolo = list(compress(self.objects.xywh, self.filter))
