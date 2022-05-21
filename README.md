@@ -4,7 +4,7 @@ Approach to tracking data extraction from football broadcast
 ## Scope
 The project is dedicated on tracking data extraction from football broadcast video files.
 The repository contains last progress and cannot be used as a final solution for custom needs.
-Currently the algorith can be used on a given toy video file only. Its usage with other videos is likely to end up with incosistent results.
+**Currently the algorith can be used on a given toy video file only. Its usage with other videos is likely to end up with incosistent results.**
 
 ## Documentation
 Detailed description of the algorithm and some documentation for code are provided [here](https://github.com/KonstantinPiliuk/CVTracking/wiki).
