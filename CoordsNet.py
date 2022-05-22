@@ -2,6 +2,17 @@ import torch.nn as nn
 import numpy as np
 
 def padding_adjust(n, x):
+  '''
+  Computes parameters for padding and pooling layers for given feature map and required grid
+  -----------------
+  parameters:
+  -- n: grid size for pooling
+  -- x: feature map
+  -----------------
+  output:
+  -- dict of parameters: {'padding_size' :(p_left, p_right, p_upper, p_lower), 
+          'pooling_params': {'kernel_size': kernel, 'stride_size': stride}}
+  '''
   if len(x.shape) == 3:
     c,h,w = x.shape
   elif len(x.shape) == 4:
@@ -34,7 +45,13 @@ def padding_adjust(n, x):
 
 
 class Padder(nn.Module):
-  def __init__(self, n, padding_size):
+  def __init__(self, padding_size):
+    '''
+    Adds padding to feature map according to given padding size
+    ------------
+    parameters:
+    -- padding_size: tuple of paddings (p_left, p_right, p_upper, p_lower)
+    '''
     super(Padder, self).__init__()
     self.silu = nn.SiLU()
     self.pad = nn.ReplicationPad2d(padding_size)
@@ -46,7 +63,15 @@ class Padder(nn.Module):
 
 
 class Pooler(nn.Module):
-  def __init__(self, params, n, c_in=255, c_out=11):
+  def __init__(self, params, c_in=255, c_out=11):
+    '''
+    Runs MaxPooling for given grid
+    -------
+    Parameters:
+    -- params: parameters dictionary after padding_adjust()
+    -- c_in: input channels for convolution
+    -- c_out: output channels for convolution
+    '''
     super(Pooler, self).__init__()
     self.pool = nn.MaxPool2d(kernel_size=params['kernel_size'], stride=params['stride_size'])
     self.conv = nn.Conv2d(c_in, c_out, 1, 1)
@@ -62,9 +87,21 @@ class Pooler(nn.Module):
 
 class CoordsNet(nn.Module):
   def __init__(self, params, map_size=13, c_in=255, c_out=11, hidden_size=100, class_size=5, reg_size=10):
+    '''
+    Keypoints detection DNN
+    ------
+    parameters:
+    -- params: parameters dictionary after padding_adjust()
+    -- map_size: square grid size
+    -- c_in: input channels for convolution
+    -- c_out: output channels for convolution
+    -- hidden_size: hidden linear layer size
+    -- class_size: number of keypoints
+    -- reg_size: number of keypoints coordinates
+    '''
     super(CoordsNet, self).__init__()
-    self.pad = Padder(n=map_size, padding_size=params['padding_size'])
-    self.pool = Pooler(params=params['pooling_params'], n=map_size, c_in=c_in, c_out=c_out)    
+    self.pad = Padder(padding_size=params['padding_size'])
+    self.pool = Pooler(params=params['pooling_params'], c_in=c_in, c_out=c_out)    
     self.l1 = nn.Linear(map_size*map_size*c_out, hidden_size)
     self.silu = nn.SiLU()
     self.classifier = nn.Linear(hidden_size, class_size)

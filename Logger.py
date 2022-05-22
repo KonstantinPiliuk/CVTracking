@@ -3,6 +3,19 @@ import datetime
 import numpy as np
 
 def db_connect(dialect='mysql', host=None, user=None, pwd=None, database=None):
+    '''
+    Creates SQLAlchemy connection to sql database
+    ------------
+    parameters:
+    -- dialect: SQLAlchemy dialect
+    -- host: host and port xxx.xx.xx.xx:xxxx
+    -- user: username
+    -- pwd: password
+    -- database: database name
+    ----------
+    output:
+    -- SQLAlchemy engine
+    '''
     if pwd is None:
         raise Exception('Please provide password with --p argument')
     if user is None:
@@ -14,6 +27,19 @@ def db_connect(dialect='mysql', host=None, user=None, pwd=None, database=None):
     return sa.create_engine(f"{dialect}://{user}:{pwd}@{host}/{database}")
 
 def insert_data(df, table, increment=False, dialect='mysql', host=None, user=None, pwd=None, database=None):
+    '''
+    Inserts pandas.DataFrame into sql table
+    ---------
+    parameters:
+    -- df: pandas.DataFrame to write in sql database
+    -- table: table name for insertion
+    -- increment: if True adds data into previous game_id. Data for new game_id is inserted by default.
+    -- dialect: SQLAlchemy dialect
+    -- host: host and port xxx.xx.xx.xx:xxxx
+    -- user: username
+    -- pwd: password
+    -- database: database name
+    '''
     db = db_connect(dialect=dialect, host=host, user=user, pwd=pwd, database=database)
     data = df.copy()
 
@@ -43,6 +69,16 @@ def insert_data(df, table, increment=False, dialect='mysql', host=None, user=Non
     print(f'{data.shape[0]} rows are inserted to {table}') 
 
 def scheme_init(dialect='mysql', host=None, user=None, pwd=None, database=None):
+    '''
+    Creates empty tables if they don't exist yet
+    ------------
+    parameters:
+    -- dialect: SQLAlchemy dialect
+    -- host: host and port xxx.xx.xx.xx:xxxx
+    -- user: username
+    -- pwd: password
+    -- database: database name
+    '''
     db = db_connect(dialect=dialect, host=host, user=user, pwd=pwd, database=database)
 
     #DROP scheme tables and create new ones
@@ -157,4 +193,4 @@ def scheme_init(dialect='mysql', host=None, user=None, pwd=None, database=None):
         EXECUTED_DTTM DATETIME(0))
     ''')
 
-    return 'Tables are initialized'
+    print('Tables are initialized')

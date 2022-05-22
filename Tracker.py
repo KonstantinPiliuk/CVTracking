@@ -20,28 +20,32 @@ def check_dicts_keys(dicts_lst: list):
 class Tracker():
 
   def __init__(self, log=None, dialect='mysql', host=None, user=None, pwd=None, database=None):
-    self.df = None
-    self.states_hist = Extractor()
+    self.df           = None
+    self.states_hist  = Extractor()
     self.matches_hist = []
-    self.frames_hist = []
-    self.__pos_hist = []
+    self.frames_hist  = []
+    self.__pos_hist   = []
 
-    self.log = log
-    self.dialect = dialect
-    self.host = host
-    self.user = user
-    self.database = database
-    self.pwd = pwd
+    self.log          = log
+    self.dialect      = dialect
+    self.host         = host
+    self.user         = user
+    self.database     = database
+    self.pwd          = pwd
 
   @staticmethod
   def __check_df_input(df):
+    '''
+    Check whether dataframe contain all necessary columns
+    '''
     if 'x' in df.columns and 'y' in df.columns and 'object' in df.columns and 'color' in df.columns and 'time' in df.columns:
       return df
     else:
       raise Exception("Input DataFrame must contain following columns: 'x', 'y', 'object', 'color', 'time'")
 
   def get_current_state(self, frame):
-    '''for given frame extracts position, time and color for objects
+    '''
+    for given frame extracts position, time and color for objects
     ------------
     parameters:
     -- frame: frame at input DataFrame for which extraction is performed
@@ -61,9 +65,16 @@ class Tracker():
     return state
 
   def __init_history(self, frame):
-    ''' for the 1st frame sets last values = current values for position, time and color.
-    Acceleration, velocity and time delta sets equal 0.
-    Variance-Covariance matrix sets to defaalt
+    ''' 
+    for the 1st frame sets last values = current values for position, time and color.
+    Acceleration, velocity and time delta sets equal 0. Variance-Covariance matrix sets to default
+    -------------------------------------------------
+    parameters:
+    -- frame: frame at input DataFrame
+    ------------
+    output:
+    -- state: dict of dicts {object: {'pos': (x,y), 'color': 123, 'time': 123, 
+    'acc': 123, 'vel': 123, 't_delta': 123, 'cov': numpy.array, 'exp_pos': (x,y)}}    
     '''
     state = self.get_current_state(frame)
     last_acc = {k: (0.0,0.0) for k in state.keys()}
@@ -79,13 +90,31 @@ class Tracker():
     return state
 
   def __first_frame(self, frame):
+    '''
+    Checks whether given frame is the 1st one
+    -------------------------------------------------
+    parameters:
+    -- frame: frame at input DataFrame
+    ------------
+    output:
+    -- True if a frame is the 1st one
+    '''
     return frame == self.frames_hist[0]
 
   @staticmethod
   def __update_covariance(pos_hist, last_state):
-    '''collects all observations of x,y and color for object
-    and estimates its covariance matrix'''
-
+    '''
+    collects all observations of x,y and color for object
+    and estimates its covariance matrix
+    -----------------
+    parameters:
+    -- pos_hist: observed players coordinates and colors at each frame
+    -- last_state: dictionary of all tracked objects with their last characteristics
+    ------------------
+    output:
+    -- last_state dict of dicts {object: {'pos': (x,y), 'color': 123, 'time': 123, 
+    'acc': 123, 'vel': 123, 't_delta': 123, 'cov': numpy.array, 'exp_pos': (x,y)}}
+    '''
     for obj in last_state.keys():
       obs = []
       for state in pos_hist:
@@ -105,7 +134,20 @@ class Tracker():
     return last_state
 
   @staticmethod
-  def __extrapolate_position(last_state, max_t_delta=1.2):
+  def __extrapolate_position(last_state, max_t_delta=1.2, max_vel=12, max_acc=9.8):
+    '''
+    Calculates expected positions on the next frame for detected objects
+    -----------------------
+    parameters:
+    -- last_state: dictionary of all tracked objects with their last characteristics
+    -- max_t_delta: maximal time gap since last observation
+    -- max_vel: maximal velocity
+    -- max_acc: maximal acceleration
+    -----------------------
+    output:
+    -- last_state: dict of dicts {object: {'pos': (x,y), 'color': 123, 'time': 123, 
+    'acc': 123, 'vel': 123, 't_delta': 123, 'cov': numpy.array, 'exp_pos': (x,y)}}
+    '''
     #calculate expected position
     for k in last_state.keys():
       t_delta = last_state[k]['t_delta']
@@ -117,8 +159,8 @@ class Tracker():
       if t_delta < max_t_delta:
         # x1 = x0 + v1*t + a/2*t^2
         # extremal human velocity and acceleration limits are set (12 m/s, 9.8 m/s^2)
-        next_x = xy[0] + min(12, vel[0])*t_delta + (min(9.8, acc[0])*t_delta**2)/2
-        next_y = xy[1] + min(12, vel[1])*t_delta + (min(9.8, acc[1])*t_delta**2)/2
+        next_x = xy[0] + min(max_vel, vel[0])*t_delta + (min(max_acc, acc[0])*t_delta**2)/2
+        next_y = xy[1] + min(max_vel, vel[1])*t_delta + (min(max_acc, acc[1])*t_delta**2)/2
         last_state[k]['exp_pos'] =  (next_x, next_y)
       else:
         last_state[k]['exp_pos'] =  xy
@@ -126,7 +168,21 @@ class Tracker():
     return last_state
 
   @staticmethod
-  def __matching(last_state, cur_state, max_velocity=12, min_t_delta=0.03, max_t_delta=1.2):
+  def __matching(last_state, cur_state, max_vel=12, min_t_delta=0.03, max_t_delta=1.2):
+    '''
+    Makes correspondences between already tracked objects and new ones
+    --------------
+    parameters:
+    -- last_state: dictionary of all tracked objects with their last characteristics
+    -- cur_state: dictionary of new objects characteristics
+    -- max_t_delta: maximal time gap since last observation
+    -- min_t_delta: minimal time gap since last observation
+    -- max_vel: maximal velocity
+    -- max_acc: maximal acceleration
+    ---------------
+    output:
+    -- dictionary with corresponding objects {new_object: old_object}
+    '''
     matches = {}  #dict {new_object: old_object}
     options = list(last_state.keys())  #all found objects
     #current_objects = list(last_state.keys())
@@ -139,7 +195,7 @@ class Tracker():
         old_pos = np.array(last_state[exp_id]['pos'])
         #maximal possible distance from previous observation = max_velocity*time(from min to max)
         #after some threshold in time (max) distance doesn't increase
-        max_dist = max_velocity * min(max(last_state[exp_id]['t_delta'], min_t_delta), max_t_delta)
+        max_dist = max_vel * min(max(last_state[exp_id]['t_delta'], min_t_delta), max_t_delta)
 
         #point is a candidate for new observation if they are closer, than max dist
         if exp_id in options and norm(new_pos - old_pos) <= max_dist:
@@ -166,6 +222,17 @@ class Tracker():
        
   @staticmethod
   def __state_update(last_state, cur_state, matches):
+    '''
+    Rewrites properties of tracked objects with new frame's objects after correspondence
+    ----------
+    parameters:
+    -- last_state: dictionary of all tracked objects with their last characteristics
+    -- cur_state: dictionary of new objects characteristics
+    -- matches: dictionary of correspondence between new and existing objects
+    ----------
+    output: last_state: dict of dicts {object: {'pos': (x,y), 'color': 123, 'time': 123, 
+    'acc': 123, 'vel': 123, 't_delta': 123, 'cov': numpy.array, 'exp_pos': (x,y)}}
+    '''
     new_time = max([x['time'] for x in copy.deepcopy(cur_state).values()])
 
     for new_obj in matches.keys():
@@ -201,6 +268,9 @@ class Tracker():
     return last_state
 
   def __ref(self, last_state, matches):
+    '''
+    Updates self.__pos_hist, self.states_hist, and self.matches_hist attributes
+    '''
     output_state = copy.deepcopy(last_state)
     for obj in output_state.keys():
       if obj not in matches.values():
@@ -211,6 +281,9 @@ class Tracker():
     self.matches_hist.append(matches)
 
   def _log(self):
+    '''
+    Insert data to sql tables
+    '''
     #matches
     mtch = pd.DataFrame([{'FRAME_ID': id, 'DETECTION_NUM': k, 'OBJECT_ID': v} for x,id in zip(
       self.matches_hist, self.frames_hist) for k,v in x.items()])
@@ -277,7 +350,17 @@ class Tracker():
                   )
     insert_data(out, 'fct_track', dialect=self.dialect, host=self.host, user=self.user, pwd=self.pwd, database=self.database)
 
-  def fit(self, df, max_velocity=12, min_t_delta=0.03, max_t_delta=1.2):
+  def fit(self, df, max_acc=9.8, max_vel=12, min_t_delta=0.03, max_t_delta=1.2):
+    '''
+    Fits Tracker algorithm to input dataframe. Runs all step at once.
+    ---------
+    parameters:
+    -- df: pandas.DataFrame with results of Detector stage
+    -- max_acc: maximal acceleration
+    -- max_vel: maximal velocity
+    -- min_t_delta: minimal time delta since last detection
+    -- max_t_delta: maximal time delta since last detection
+    '''
     self.df = self.__check_df_input(df)
     self.frames_hist = list(df['frame'].sort_values().unique())
 
@@ -293,10 +376,10 @@ class Tracker():
         last_state = self.__update_covariance(self.__pos_hist, last_state)
 
       #calculate expected position (previous position corrected to time, velocity and acceleration)
-      last_state = self.__extrapolate_position(last_state, max_t_delta=max_t_delta)
+      last_state = self.__extrapolate_position(last_state, max_t_delta=max_t_delta, max_vel=max_vel, max_acc=max_acc)
 
       #match new detections with existing
-      matches = self.__matching(last_state, cur_state, max_velocity=max_velocity, min_t_delta=min_t_delta, max_t_delta=max_t_delta)
+      matches = self.__matching(last_state, cur_state, max_vel=max_vel, min_t_delta=min_t_delta, max_t_delta=max_t_delta)
 
       #update states of matched objects and t_delta for unmatched ones
       last_state = self.__state_update(last_state, cur_state, matches)
